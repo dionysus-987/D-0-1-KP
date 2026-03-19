@@ -2,7 +2,7 @@
 from matplotlib.backends.backend_tkagg import FigureCanvasTkAgg
 from matplotlib.figure import Figure
 
-from solver import sort_groups_by_third_ratio
+from algorithms.dp_solver import sort_groups_by_third_ratio
 
 
 class PlotPanel:

@@ -1,6 +1,6 @@
 # -*- coding: utf-8 -*-
 from dataclasses import dataclass, field
-from typing import List, Optional
+from typing import Dict, List, Optional
 
 
 @dataclass
@@ -8,6 +8,10 @@ class GroupItem:
     weight: int
     profit: int
     option_id: int  # 1, 2, 3
+
+    @property
+    def ratio(self) -> float:
+        return self.profit / self.weight if self.weight != 0 else float("inf")
 
 
 @dataclass
@@ -17,8 +21,18 @@ class ItemGroup:
 
     @property
     def third_ratio(self) -> float:
+        if len(self.items) < 3:
+            raise ValueError(f"group {self.group_id}: 当前分组不足 3 个元素，无法计算 third_ratio")
         third = self.items[2]
         return third.profit / third.weight if third.weight != 0 else float("inf")
+
+    @property
+    def best_item_by_ratio(self) -> GroupItem:
+        return max(self.items, key=lambda x: x.ratio)
+
+    @property
+    def best_ratio(self) -> float:
+        return self.best_item_by_ratio.ratio
 
 
 @dataclass
@@ -68,15 +82,31 @@ class DKPInstance:
 
 
 @dataclass
-class SolveResult:
+class AlgorithmResult:
     instance_name: str
-    max_profit: int
-    used_weight: int
-    best_capacity_index: int
-    elapsed_seconds: float
+    algorithm_name: str
+    sorted_before_solve: bool
+
+    value: int
+    weight: int
+    time_seconds: float
+
     selected: List[Optional[int]]
-    sorted_by_third_ratio: bool
     sorted_group_order: List[int]
+
+    optimal: Optional[bool] = None
+    gap: Optional[float] = None
+    reference_value: Optional[int] = None
+
+    success: bool = True
+    error_message: str = ""
+    extra: Dict[str, float] = field(default_factory=dict)
 
     def selected_count(self) -> int:
         return sum(x is not None for x in self.selected)
+
+
+@dataclass
+class InstanceExperimentResult:
+    instance_name: str
+    results: List[AlgorithmResult]
