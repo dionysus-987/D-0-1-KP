@@ -8,7 +8,7 @@ from typing import Dict, List, Optional
 from matplotlib.backends.backend_tkagg import FigureCanvasTkAgg
 from matplotlib.figure import Figure
 
-from models import DKPInstance, AlgorithmResult, InstanceExperimentResult
+from models import DKPInstance, InstanceExperimentResult
 from parser_utils import parse_dkp_instances
 from plot_panel import PlotPanel
 
