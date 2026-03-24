@@ -1,44 +1,66 @@
 # -*- coding: utf-8 -*-
+
 import os
 import threading
 import tkinter as tk
-from tkinter import ttk, filedialog, messagebox
+from tkinter import filedialog, messagebox
 from typing import Dict, List, Optional
+
+import ttkbootstrap as ttk
+from ttkbootstrap.constants import *
 
 from matplotlib.backends.backend_tkagg import FigureCanvasTkAgg
 from matplotlib.figure import Figure
 
-from models import DKPInstance, InstanceExperimentResult
-from parser_utils import parse_dkp_instances
-from plot_panel import PlotPanel
-
 from algorithms.dp_solver import DPSolver, sort_groups_by_third_ratio
 from algorithms.greedy_ratio import GreedyRatioSolver
 from algorithms.greedy_third_ratio import GreedyThirdRatioSolver
-
-from experiment.runner import ExperimentRunner
 from experiment.exporter import (
     export_results_to_csv,
     export_results_to_txt,
     build_experiment_text,
 )
+from experiment.runner import ExperimentRunner
+from models import DKPInstance, InstanceExperimentResult
+from parser_utils import parse_dkp_instances
+from plot_panel import PlotPanel
 
 
 class MainWindow:
-    BG = "#f5f7fb"
-    CARD_BG = "#ffffff"
-    INPUT_BG = "#fbfcfe"
-    TEXT = "#1f2937"
-    SUBTEXT = "#5b6472"
-    BORDER = "#d7deea"
-    ACCENT = "#2f6fed"
+    BG = "#F6F8FC"
+    CARD_BG = "#FFFFFF"
+    INPUT_BG = "#F9FBFF"
+    TEXT = "#1F2937"
+    SUBTEXT = "#667085"
+    BORDER = "#E4EAF3"
+    ACCENT = "#2563EB"
+    SUCCESS = "#16A34A"
+    WARNING = "#D97706"
+    ERROR = "#DC2626"
+    LIGHT_ACCENT = "#DBEAFE"
+    SOFT_BG = "#F3F6FB"
 
-    def __init__(self, root: tk.Tk):
+    CHART = {
+        "figure_bg": "#FFFFFF",
+        "axes_bg": "#FBFCFE",
+        "grid": "#E5EAF3",
+        "border": "#D8E1EE",
+        "text": "#1F2937",
+        "subtext": "#6B7280",
+        "blue": "#2563EB",
+        "teal": "#14B8A6",
+        "orange": "#F59E0B",
+        "red": "#EF4444",
+        "purple": "#8B5CF6",
+        "gray": "#94A3B8",
+        "line": "#0F172A",
+    }
+
+    def __init__(self, root):
         self.root = root
         self.root.title("D{0-1}KP 算法比较实验系统")
         self.root.geometry("1780x980")
         self.root.minsize(1380, 780)
-        self.root.configure(bg=self.BG)
 
         self.instances: Dict[str, DKPInstance] = {}
         self.filtered_names: List[str] = []
@@ -47,11 +69,9 @@ class MainWindow:
         self.current_file_path: str = ""
         self.is_running = False
 
-        # 当前实验结果
         self.current_instance_experiment: Optional[InstanceExperimentResult] = None
         self.last_experiment_results: List[InstanceExperimentResult] = []
 
-        # UI 状态
         self.sorted_plot_var = tk.BooleanVar(value=False)
         self.auto_plot_var = tk.BooleanVar(value=True)
 
@@ -75,97 +95,72 @@ class MainWindow:
     # 样式
     # =========================
     def _setup_styles(self):
-        style = ttk.Style()
-        style.theme_use("xpnative")
+        style = self.root.style
 
-        style.configure(
-            ".",
-            font=("Microsoft YaHei", 10),
-            background=self.BG,
-            foreground=self.TEXT
+        style.configure(".", font=("Microsoft YaHei", 10))
+        style.configure("Treeview", rowheight=30, font=("Microsoft YaHei", 10))
+        style.configure("Treeview.Heading", font=("Microsoft YaHei", 10, "bold"))
+
+        style.configure("Hero.TLabel", font=("Microsoft YaHei", 18, "bold"), foreground=self.TEXT)
+        style.configure("Title.TLabel", font=("Microsoft YaHei", 11, "bold"), foreground=self.TEXT)
+        style.configure("SubTitle.TLabel", font=("Microsoft YaHei", 9), foreground=self.SUBTEXT)
+        style.configure("Accent.TLabel", font=("Microsoft YaHei", 11, "bold"), foreground=self.ACCENT)
+        style.configure("Status.TLabel", font=("Microsoft YaHei", 9), foreground=self.SUBTEXT)
+
+        style.configure("TNotebook.Tab", padding=(16, 8))
+
+    # =========================
+    # 图表主题辅助
+    # =========================
+    def _get_algo_color(self, algorithm_name: str) -> str:
+        name = algorithm_name.lower()
+
+        if "dp" in name and "sorted" not in name:
+            return self.CHART["blue"]
+        if "sorted" in name:
+            return self.CHART["teal"]
+        if "third" in name:
+            return self.CHART["orange"]
+        if "ratio" in name:
+            return self.CHART["purple"]
+        return self.CHART["gray"]
+
+    def _style_axes(self, ax):
+        ax.set_facecolor(self.CHART["axes_bg"])
+
+        for spine in ax.spines.values():
+            spine.set_color(self.CHART["border"])
+            spine.set_linewidth(1.0)
+
+        ax.tick_params(axis="both", colors="#374151", labelsize=9)
+        ax.grid(
+            True,
+            linestyle="--",
+            linewidth=0.8,
+            color=self.CHART["grid"],
+            alpha=0.9
         )
 
-        style.configure(
-            "Primary.TButton",
-            padding=(12, 7),
-            font=("Microsoft YaHei", 10, "bold")
-        )
-        style.configure(
-            "Secondary.TButton",
-            padding=(10, 6),
-            font=("Microsoft YaHei", 10)
-        )
-        style.configure("TButton", padding=(10, 6))
-
-        style.configure(
-            "TCheckbutton",
-            background=self.CARD_BG,
-            foreground=self.TEXT
-        )
-
-        style.configure(
-            "TNotebook",
-            background=self.CARD_BG,
-            borderwidth=0
-        )
-        style.configure(
-            "TNotebook.Tab",
-            padding=(14, 8),
-            font=("Microsoft YaHei", 10)
-        )
-
-        style.configure(
-            "Treeview",
-            background="#ffffff",
-            fieldbackground="#ffffff",
-            foreground=self.TEXT,
-            rowheight=28,
-            bordercolor=self.BORDER,
-            lightcolor=self.BORDER,
-            darkcolor=self.BORDER
-        )
-        style.configure(
-            "Treeview.Heading",
-            font=("Microsoft YaHei", 10, "bold"),
-            background="#edf2f9",
-            foreground=self.TEXT,
-            relief="flat"
-        )
-        style.map(
-            "Treeview",
-            background=[("selected", "#dce8ff")],
-            foreground=[("selected", self.TEXT)]
-        )
+    def _style_legend(self, legend):
+        if legend is None:
+            return
+        frame = legend.get_frame()
+        frame.set_facecolor("#FFFFFF")
+        frame.set_edgecolor(self.CHART["border"])
+        frame.set_alpha(0.96)
 
     # =========================
     # 通用组件
     # =========================
-    def _create_card(self, parent):
-        return tk.Frame(
-            parent,
-            bg=self.CARD_BG,
-            bd=1,
-            relief="solid",
-            highlightthickness=0
-        )
-
     def _section_title(self, parent, text):
-        return tk.Label(
-            parent,
-            text=text,
-            bg=self.CARD_BG,
-            fg=self.TEXT,
-            font=("Microsoft YaHei", 10, "bold")
-        )
+        return ttk.Label(parent, text=text, style="Title.TLabel")
 
     def _section_info(self, parent, textvariable=None, text=None):
-        return tk.Label(
+        return ttk.Label(
             parent,
             text=text if text is not None else "",
             textvariable=textvariable,
-            bg=self.CARD_BG,
-            fg=self.SUBTEXT,
-            font=("Microsoft YaHei", 9)
+            style="SubTitle.TLabel"
         )
 
     def _set_text(self, text_widget: tk.Text, content: str):
@@ -174,125 +169,120 @@ class MainWindow:
         text_widget.insert(tk.END, content)
         text_widget.config(state=tk.DISABLED)
 
+    def _clear_tree(self, tree):
+        for item in tree.get_children():
+            tree.delete(item)
+
+    def _create_legacy_text(self, parent, **kwargs):
+        default = dict(
+            bg=self.INPUT_BG,
+            fg=self.TEXT,
+            insertbackground=self.TEXT,
+            relief="flat",
+            bd=0,
+            highlightthickness=1,
+            highlightbackground="#DBE3EF",
+            highlightcolor="#DBE3EF",
+            font=("Consolas", 10),
+            padx=8,
+            pady=8,
+        )
+        default.update(kwargs)
+        return tk.Text(parent, **default)
+
+    def _create_legacy_listbox(self, parent, **kwargs):
+        default = dict(
+            exportselection=False,
+            font=("Segoe UI", 10),
+            selectbackground=self.ACCENT,
+            selectforeground="#FFFFFF",
+            activestyle="none",
+            relief="flat",
+            bg=self.INPUT_BG,
+            fg=self.TEXT,
+            highlightthickness=0,
+            bd=0,
+        )
+        default.update(kwargs)
+        return tk.Listbox(parent, **default)
+
     # =========================
     # UI 构建
     # =========================
     def _build_ui(self):
+        self.root.configure(background=self.BG)
         self._build_top_header()
         self._build_toolbar()
         self._build_main_area()
         self._build_statusbar()
 
     def _build_top_header(self):
-        wrapper = tk.Frame(self.root, bg=self.BG)
-        wrapper.pack(fill=tk.X, padx=10, pady=(10, 6))
+        wrapper = ttk.Frame(self.root, padding=(10, 10, 10, 6))
+        wrapper.pack(fill=X)
 
-        card = self._create_card(wrapper)
-        card.pack(fill=tk.X)
+        card = ttk.Frame(wrapper, bootstyle="light", padding=18)
+        card.pack(fill=X)
 
         card.columnconfigure(0, weight=1)
         card.columnconfigure(1, weight=0)
 
-        left = tk.Frame(card, bg=self.CARD_BG)
-        left.grid(row=0, column=0, sticky="w", padx=16, pady=12)
+        left = ttk.Frame(card)
+        left.grid(row=0, column=0, sticky=W)
 
-        title = tk.Label(
-            left,
-            text="D{0-1}KP 算法比较实验系统",
-            bg=self.CARD_BG,
-            fg=self.TEXT,
-            font=("Microsoft YaHei", 16, "bold")
-        )
-        title.pack(anchor="w")
-
-        subtitle = tk.Label(
+        ttk.Label(left, text="D{0-1}KP 算法比较实验系统", style="Hero.TLabel").pack(anchor=W)
+        ttk.Label(
             left,
             text="实例管理、散点可视化、单实例比较、批量实验、CSV/TXT 导出",
-            bg=self.CARD_BG,
-            fg=self.SUBTEXT,
-            font=("Microsoft YaHei", 10)
-        )
-        subtitle.pack(anchor="w", pady=(3, 0))
+            style="SubTitle.TLabel"
+        ).pack(anchor=W, pady=(4, 0))
 
-        right = tk.Frame(card, bg=self.CARD_BG)
-        right.grid(row=0, column=1, sticky="e", padx=16, pady=12)
+        right = ttk.Frame(card)
+        right.grid(row=0, column=1, sticky=E)
 
-        tk.Label(
-            right,
-            textvariable=self.current_name_var,
-            bg=self.CARD_BG,
-            fg=self.ACCENT,
-            font=("Microsoft YaHei", 11, "bold")
-        ).pack(anchor="e")
-
-        tk.Label(
+        ttk.Label(right, textvariable=self.current_name_var, style="Accent.TLabel").pack(anchor=E)
+        ttk.Label(
             right,
             textvariable=self.summary_var,
-            bg=self.CARD_BG,
-            fg=self.SUBTEXT,
-            font=("Microsoft YaHei", 9),
+            style="SubTitle.TLabel",
             justify="right"
-        ).pack(anchor="e", pady=(4, 0))
+        ).pack(anchor=E, pady=(4, 0))
 
     def _build_toolbar(self):
-        wrapper = tk.Frame(self.root, bg=self.BG)
-        wrapper.pack(fill=tk.X, padx=10, pady=(0, 8))
+        wrapper = ttk.Frame(self.root, padding=(10, 0, 10, 8))
+        wrapper.pack(fill=X)
 
-        bar = self._create_card(wrapper)
-        bar.pack(fill=tk.X)
+        bar = ttk.Frame(wrapper, bootstyle="light", padding=12)
+        bar.pack(fill=X)
 
-        left = tk.Frame(bar, bg=self.CARD_BG)
-        left.pack(side=tk.LEFT, padx=12, pady=10)
+        left = ttk.Frame(bar)
+        left.pack(side=LEFT)
 
-        ttk.Button(
-            left, text="打开数据", command=self.load_file, style="Primary.TButton"
-        ).pack(side=tk.LEFT, padx=(0, 8))
+        ttk.Button(left, text="打开数据", command=self.load_file, bootstyle="primary").pack(side=LEFT, padx=(0, 8))
+        ttk.Button(left, text="运行当前实例", command=self.run_current_instance_experiment, bootstyle="primary").pack(side=LEFT, padx=4)
+        ttk.Button(left, text="批量实验(全部实例)", command=self.run_batch_experiment, bootstyle="primary").pack(side=LEFT, padx=4)
 
-        ttk.Button(
-            left, text="运行当前实例", command=self.run_current_instance_experiment, style="Primary.TButton"
-        ).pack(side=tk.LEFT, padx=4)
+        ttk.Button(left, text="导出 CSV", command=self.export_csv, bootstyle="secondary").pack(side=LEFT, padx=(12, 4))
+        ttk.Button(left, text="导出 TXT", command=self.export_txt, bootstyle="secondary").pack(side=LEFT, padx=4)
 
-        ttk.Button(
-            left, text="批量实验(全部实例)", command=self.run_batch_experiment, style="Primary.TButton"
-        ).pack(side=tk.LEFT, padx=4)
+        ttk.Button(left, text="绘制散点图", command=self.plot_current_instance, bootstyle="info-outline").pack(side=LEFT, padx=(12, 4))
+        ttk.Button(left, text="排序预览", command=self.show_sorted_table, bootstyle="info-outline").pack(side=LEFT, padx=4)
 
-        ttk.Button(
-            left, text="导出 CSV", command=self.export_csv, style="Secondary.TButton"
-        ).pack(side=tk.LEFT, padx=(12, 4))
+        right = ttk.Frame(bar)
+        right.pack(side=RIGHT)
 
-        ttk.Button(
-            left, text="导出 TXT", command=self.export_txt, style="Secondary.TButton"
-        ).pack(side=tk.LEFT, padx=4)
-
-        ttk.Button(
-            left, text="绘制散点图", command=self.plot_current_instance, style="Secondary.TButton"
-        ).pack(side=tk.LEFT, padx=(12, 4))
-
-        ttk.Button(
-            left, text="排序预览", command=self.show_sorted_table, style="Secondary.TButton"
-        ).pack(side=tk.LEFT, padx=4)
-
-        right = tk.Frame(bar, bg=self.CARD_BG)
-        right.pack(side=tk.RIGHT, padx=12, pady=10)
-
-        ttk.Checkbutton(
-            right, text="绘图按第三项比率排序", variable=self.sorted_plot_var
-        ).pack(side=tk.LEFT, padx=8)
-
-        ttk.Checkbutton(
-            right, text="切换实例自动绘图", variable=self.auto_plot_var
-        ).pack(side=tk.LEFT, padx=8)
+        ttk.Checkbutton(right, text="绘图按第三项比率排序", variable=self.sorted_plot_var, bootstyle="round-toggle").pack(side=LEFT, padx=8)
+        ttk.Checkbutton(right, text="切换实例自动绘图", variable=self.auto_plot_var, bootstyle="round-toggle").pack(side=LEFT, padx=8)
 
     def _build_main_area(self):
-        outer = tk.Frame(self.root, bg=self.BG)
-        outer.pack(fill=tk.BOTH, expand=True, padx=10, pady=(0, 10))
+        outer = ttk.Frame(self.root, padding=(10, 0, 10, 10))
+        outer.pack(fill=BOTH, expand=True)
 
-        paned = ttk.Panedwindow(outer, orient=tk.HORIZONTAL)
-        paned.pack(fill=tk.BOTH, expand=True)
+        paned = ttk.Panedwindow(outer, orient=HORIZONTAL)
+        paned.pack(fill=BOTH, expand=True)
 
-        self.left_panel = tk.Frame(paned, bg=self.BG)
-        self.center_panel = tk.Frame(paned, bg=self.BG)
-        self.right_panel = tk.Frame(paned, bg=self.BG)
+        self.left_panel = ttk.Frame(paned)
+        self.center_panel = ttk.Frame(paned)
+        self.right_panel = ttk.Frame(paned)
 
         paned.add(self.left_panel, weight=22)
         paned.add(self.center_panel, weight=40)
@@ -306,145 +296,92 @@ class MainWindow:
         self.left_panel.rowconfigure(2, weight=1)
         self.left_panel.columnconfigure(0, weight=1)
 
-        # 文件信息
-        file_card = self._create_card(self.left_panel)
+        file_card = ttk.Frame(self.left_panel, bootstyle="light", padding=12)
         file_card.grid(row=0, column=0, sticky="ew", padx=(0, 6), pady=(0, 8))
         file_card.columnconfigure(0, weight=1)
 
-        self._section_title(file_card, "数据文件").grid(
-            row=0, column=0, sticky="w", padx=12, pady=(12, 2)
-        )
-        self._section_info(file_card, textvariable=self.loaded_file_var).grid(
-            row=1, column=0, sticky="w", padx=12, pady=(0, 10)
-        )
+        self._section_title(file_card, "数据文件").grid(row=0, column=0, sticky="w")
+        self._section_info(file_card, textvariable=self.loaded_file_var).grid(row=1, column=0, sticky="w", pady=(2, 0))
 
-        # 搜索
-        search_card = self._create_card(self.left_panel)
+        search_card = ttk.Frame(self.left_panel, bootstyle="light", padding=12)
         search_card.grid(row=1, column=0, sticky="ew", padx=(0, 6), pady=(0, 8))
         search_card.columnconfigure(0, weight=1)
 
-        self._section_title(search_card, "实例导航").grid(
-            row=0, column=0, sticky="w", padx=12, pady=(12, 2)
-        )
-        self._section_info(search_card, textvariable=self.instance_count_var).grid(
-            row=1, column=0, sticky="w", padx=12, pady=(0, 8)
-        )
+        self._section_title(search_card, "实例导航").grid(row=0, column=0, sticky="w")
+        self._section_info(search_card, textvariable=self.instance_count_var).grid(row=1, column=0, sticky="w", pady=(2, 8))
 
-        self.search_entry = tk.Entry(
-            search_card,
-            textvariable=self.search_var,
-            relief="flat",
-            bg=self.INPUT_BG,
-            fg=self.TEXT,
-            insertbackground=self.TEXT,
-            font=("Microsoft YaHei", 10)
-        )
-        self.search_entry.grid(row=2, column=0, sticky="ew", padx=12, pady=(0, 12), ipady=6)
+        search_box = ttk.Frame(search_card, bootstyle="light")
+        search_box.grid(row=2, column=0, sticky="ew")
+        search_box.columnconfigure(0, weight=1)
 
-        # 实例列表
-        list_card = self._create_card(self.left_panel)
+        self.search_entry = ttk.Entry(search_box, textvariable=self.search_var, bootstyle="primary")
+        self.search_entry.grid(row=0, column=0, sticky="ew")
+
+        list_card = ttk.Frame(self.left_panel, bootstyle="light", padding=12)
         list_card.grid(row=2, column=0, sticky="nsew", padx=(0, 6), pady=(0, 8))
         list_card.rowconfigure(1, weight=1)
         list_card.columnconfigure(0, weight=1)
 
-        self._section_title(list_card, "实例列表").grid(
-            row=0, column=0, sticky="w", padx=12, pady=(12, 0)
-        )
+        self._section_title(list_card, "实例列表").grid(row=0, column=0, sticky="w")
 
-        list_container = tk.Frame(list_card, bg=self.CARD_BG)
-        list_container.grid(row=1, column=0, sticky="nsew", padx=12, pady=(8, 12))
+        list_container = ttk.Frame(list_card)
+        list_container.grid(row=1, column=0, sticky="nsew", pady=(8, 0))
         list_container.rowconfigure(0, weight=1)
         list_container.columnconfigure(0, weight=1)
 
-        self.instance_listbox = tk.Listbox(
-            list_container,
-            exportselection=False,
-            font=("Segoe UI", 10),
-            selectbackground=self.ACCENT,
-            selectforeground="#ffffff",
-            activestyle="none",
-            relief="flat",
-            bg=self.INPUT_BG,
-            fg=self.TEXT,
-            highlightthickness=0,
-            bd=0
-        )
+        self.instance_listbox = self._create_legacy_listbox(list_container)
         self.instance_listbox.grid(row=0, column=0, sticky="nsew")
 
-        list_scroll = ttk.Scrollbar(
-            list_container, orient="vertical", command=self.instance_listbox.yview
-        )
+        list_scroll = ttk.Scrollbar(list_container, orient="vertical", command=self.instance_listbox.yview)
         list_scroll.grid(row=0, column=1, sticky="ns")
         self.instance_listbox.config(yscrollcommand=list_scroll.set)
 
-        # 实例信息
-        info_card = self._create_card(self.left_panel)
+        info_card = ttk.Frame(self.left_panel, bootstyle="light", padding=12)
         info_card.grid(row=3, column=0, sticky="ew", padx=(0, 6))
         info_card.rowconfigure(1, weight=1)
         info_card.columnconfigure(0, weight=1)
 
-        self._section_title(info_card, "实例信息").grid(
-            row=0, column=0, sticky="w", padx=12, pady=(12, 0)
-        )
+        self._section_title(info_card, "实例信息").grid(row=0, column=0, sticky="w")
 
-        self.info_text = tk.Text(
-            info_card,
-            height=8,
-            wrap=tk.WORD,
-            state=tk.DISABLED,
-            font=("Consolas", 10),
-            bg=self.INPUT_BG,
-            fg=self.TEXT,
-            relief="flat",
-            bd=0,
-            highlightthickness=0,
-            padx=6,
-            pady=6
-        )
-        self.info_text.grid(row=1, column=0, sticky="nsew", padx=12, pady=(8, 12))
+        self.info_text = self._create_legacy_text(info_card, height=8, wrap=tk.WORD, state=tk.DISABLED)
+        self.info_text.grid(row=1, column=0, sticky="nsew", pady=(8, 0))
 
     def _build_center_panel(self):
         self.center_panel.rowconfigure(0, weight=0)
         self.center_panel.rowconfigure(1, weight=1)
         self.center_panel.columnconfigure(0, weight=1)
 
-        # 算法选择
-        alg_card = self._create_card(self.center_panel)
+        alg_card = ttk.Frame(self.center_panel, bootstyle="light", padding=12)
         alg_card.grid(row=0, column=0, sticky="ew", padx=6, pady=(0, 8))
         alg_card.columnconfigure(0, weight=1)
 
-        self._section_title(alg_card, "算法选择").grid(
-            row=0, column=0, sticky="w", padx=12, pady=(12, 4)
-        )
-        self._section_info(alg_card, text="勾选后参与当前实例运行和批量实验").grid(
-            row=1, column=0, sticky="w", padx=12, pady=(0, 8)
-        )
+        self._section_title(alg_card, "算法选择").grid(row=0, column=0, sticky="w")
+        self._section_info(alg_card, text="勾选后参与当前实例运行和批量实验").grid(row=1, column=0, sticky="w", pady=(2, 8))
 
-        options = tk.Frame(alg_card, bg=self.CARD_BG)
-        options.grid(row=2, column=0, sticky="ew", padx=12, pady=(0, 12))
+        options = ttk.Frame(alg_card)
+        options.grid(row=2, column=0, sticky="ew")
 
-        ttk.Checkbutton(options, text="DP", variable=self.alg_dp_var).pack(side=tk.LEFT, padx=8)
-        ttk.Checkbutton(options, text="DP + Sorted", variable=self.alg_dp_sorted_var).pack(side=tk.LEFT, padx=8)
-        ttk.Checkbutton(options, text="GreedyRatio", variable=self.alg_greedy_ratio_var).pack(side=tk.LEFT, padx=8)
-        ttk.Checkbutton(options, text="GreedyThirdRatio", variable=self.alg_greedy_third_var).pack(side=tk.LEFT, padx=8)
+        ttk.Checkbutton(options, text="DP", variable=self.alg_dp_var, bootstyle="round-toggle").pack(side=LEFT, padx=8)
+        ttk.Checkbutton(options, text="DP + Sorted", variable=self.alg_dp_sorted_var, bootstyle="round-toggle").pack(side=LEFT, padx=8)
+        ttk.Checkbutton(options, text="GreedyRatio", variable=self.alg_greedy_ratio_var, bootstyle="round-toggle").pack(side=LEFT, padx=8)
+        ttk.Checkbutton(options, text="GreedyThirdRatio", variable=self.alg_greedy_third_var, bootstyle="round-toggle").pack(side=LEFT, padx=8)
 
-        # 左侧图形 notebook
-        plot_card = self._create_card(self.center_panel)
+        plot_card = ttk.Frame(self.center_panel, bootstyle="light", padding=12)
         plot_card.grid(row=1, column=0, sticky="nsew", padx=6)
         plot_card.rowconfigure(1, weight=1)
         plot_card.columnconfigure(0, weight=1)
 
-        top = tk.Frame(plot_card, bg=self.CARD_BG)
-        top.grid(row=0, column=0, sticky="ew", padx=12, pady=(12, 0))
+        top = ttk.Frame(plot_card)
+        top.grid(row=0, column=0, sticky="ew")
 
-        self._section_title(top, "可视化").pack(side=tk.LEFT)
-        self._section_info(top, text="实例散点图 / 算法比较图").pack(side=tk.LEFT, padx=(10, 0))
+        self._section_title(top, "可视化").pack(side=LEFT)
+        self._section_info(top, text="实例散点图 / 算法比较图").pack(side=LEFT, padx=(10, 0))
 
         self.visual_notebook = ttk.Notebook(plot_card)
-        self.visual_notebook.grid(row=1, column=0, sticky="nsew", padx=12, pady=(10, 12))
+        self.visual_notebook.grid(row=1, column=0, sticky="nsew", pady=(10, 0))
 
-        self.scatter_tab = tk.Frame(self.visual_notebook, bg=self.CARD_BG)
-        self.compare_plot_tab = tk.Frame(self.visual_notebook, bg=self.CARD_BG)
+        self.scatter_tab = ttk.Frame(self.visual_notebook, bootstyle="light")
+        self.compare_plot_tab = ttk.Frame(self.visual_notebook, bootstyle="light")
         self.visual_notebook.add(self.scatter_tab, text="散点图")
         self.visual_notebook.add(self.compare_plot_tab, text="对比图")
 
@@ -453,7 +390,7 @@ class MainWindow:
         self.compare_plot_tab.rowconfigure(0, weight=1)
         self.compare_plot_tab.columnconfigure(0, weight=1)
 
-        plot_wrap = tk.Frame(self.scatter_tab, bg=self.CARD_BG)
+        plot_wrap = ttk.Frame(self.scatter_tab)
         plot_wrap.grid(row=0, column=0, sticky="nsew")
         plot_wrap.rowconfigure(0, weight=1)
         plot_wrap.columnconfigure(0, weight=1)
@@ -471,73 +408,64 @@ class MainWindow:
         self.right_panel.rowconfigure(1, weight=1)
         self.right_panel.columnconfigure(0, weight=1)
 
-        control_card = self._create_card(self.right_panel)
+        control_card = ttk.Frame(self.right_panel, bootstyle="light", padding=12)
         control_card.grid(row=0, column=0, sticky="ew", padx=(6, 0), pady=(0, 8))
         control_card.columnconfigure(0, weight=1)
         control_card.columnconfigure(1, weight=1)
 
-        self._section_title(control_card, "实验控制").grid(
-            row=0, column=0, columnspan=2, sticky="w", padx=12, pady=(12, 0)
-        )
+        self._section_title(control_card, "实验控制").grid(row=0, column=0, columnspan=2, sticky="w")
 
         ttk.Button(
             control_card,
             text="运行当前实例",
             command=self.run_current_instance_experiment,
-            style="Primary.TButton"
-        ).grid(row=1, column=0, sticky="ew", padx=(12, 6), pady=(10, 4))
+            bootstyle="primary"
+        ).grid(row=1, column=0, sticky="ew", padx=(0, 6), pady=(10, 4))
 
         ttk.Button(
             control_card,
             text="批量实验(全部实例)",
             command=self.run_batch_experiment,
-            style="Primary.TButton"
-        ).grid(row=1, column=1, sticky="ew", padx=(6, 12), pady=(10, 4))
+            bootstyle="primary"
+        ).grid(row=1, column=1, sticky="ew", padx=(6, 0), pady=(10, 4))
 
         ttk.Button(
             control_card,
             text="导出 CSV",
             command=self.export_csv,
-            style="Secondary.TButton"
-        ).grid(row=2, column=0, sticky="ew", padx=(12, 6), pady=(4, 4))
+            bootstyle="secondary"
+        ).grid(row=2, column=0, sticky="ew", padx=(0, 6), pady=(4, 4))
 
         ttk.Button(
             control_card,
             text="导出 TXT",
             command=self.export_txt,
-            style="Secondary.TButton"
-        ).grid(row=2, column=1, sticky="ew", padx=(6, 12), pady=(4, 4))
+            bootstyle="secondary"
+        ).grid(row=2, column=1, sticky="ew", padx=(6, 0), pady=(4, 4))
 
-        summary_box = tk.Frame(control_card, bg="#f8fafc", bd=1, relief="solid")
-        summary_box.grid(row=3, column=0, columnspan=2, sticky="ew", padx=12, pady=(8, 12))
+        summary_box = ttk.Frame(control_card, bootstyle="default", padding=10)
+        summary_box.grid(row=3, column=0, columnspan=2, sticky="ew", pady=(8, 0))
 
-        tk.Label(
+        ttk.Label(
             summary_box,
             textvariable=self.summary_var,
-            bg="#f8fafc",
-            fg=self.SUBTEXT,
-            font=("Microsoft YaHei", 9),
-            anchor="w",
-            justify="left",
-            padx=10,
-            pady=8
-        ).pack(fill=tk.X)
+            style="SubTitle.TLabel",
+            justify="left"
+        ).pack(fill=X)
 
-        notebook_card = self._create_card(self.right_panel)
+        notebook_card = ttk.Frame(self.right_panel, bootstyle="light", padding=12)
         notebook_card.grid(row=1, column=0, sticky="nsew", padx=(6, 0))
         notebook_card.rowconfigure(1, weight=1)
         notebook_card.columnconfigure(0, weight=1)
 
-        self._section_title(notebook_card, "结果面板").grid(
-            row=0, column=0, sticky="w", padx=12, pady=(12, 0)
-        )
+        self._section_title(notebook_card, "结果面板").grid(row=0, column=0, sticky="w")
 
         self.notebook = ttk.Notebook(notebook_card)
-        self.notebook.grid(row=1, column=0, sticky="nsew", padx=12, pady=(10, 12))
+        self.notebook.grid(row=1, column=0, sticky="nsew", pady=(10, 0))
 
-        self.sort_tab = tk.Frame(self.notebook, bg=self.CARD_BG)
-        self.table_tab = tk.Frame(self.notebook, bg=self.CARD_BG)
-        self.result_tab = tk.Frame(self.notebook, bg=self.CARD_BG)
+        self.sort_tab = ttk.Frame(self.notebook, bootstyle="light")
+        self.table_tab = ttk.Frame(self.notebook, bootstyle="light")
+        self.result_tab = ttk.Frame(self.notebook, bootstyle="light")
 
         self.notebook.add(self.sort_tab, text="排序预览")
         self.notebook.add(self.table_tab, text="结果表格")
@@ -551,13 +479,13 @@ class MainWindow:
         self.sort_tab.rowconfigure(0, weight=1)
         self.sort_tab.columnconfigure(0, weight=1)
 
-        table_wrap = tk.Frame(self.sort_tab, bg=self.CARD_BG)
+        table_wrap = ttk.Frame(self.sort_tab)
         table_wrap.grid(row=0, column=0, sticky="nsew")
         table_wrap.rowconfigure(0, weight=1)
         table_wrap.columnconfigure(0, weight=1)
 
         columns = ("idx", "gid", "w3", "p3", "ratio")
-        self.sort_tree = ttk.Treeview(table_wrap, columns=columns, show="headings")
+        self.sort_tree = ttk.Treeview(table_wrap, columns=columns, show="headings", bootstyle="primary")
 
         headers = {
             "idx": "序号",
@@ -588,7 +516,7 @@ class MainWindow:
         self.table_tab.rowconfigure(0, weight=1)
         self.table_tab.columnconfigure(0, weight=1)
 
-        wrap = tk.Frame(self.table_tab, bg=self.CARD_BG)
+        wrap = ttk.Frame(self.table_tab)
         wrap.grid(row=0, column=0, sticky="nsew")
         wrap.rowconfigure(0, weight=1)
         wrap.columnconfigure(0, weight=1)
@@ -603,7 +531,7 @@ class MainWindow:
             "optimal",
             "success",
         )
-        self.result_tree = ttk.Treeview(wrap, columns=columns, show="headings")
+        self.result_tree = ttk.Treeview(wrap, columns=columns, show="headings", bootstyle="primary")
 
         headers = {
             "instance": "实例",
@@ -640,23 +568,15 @@ class MainWindow:
         self.result_tab.rowconfigure(0, weight=1)
         self.result_tab.columnconfigure(0, weight=1)
 
-        result_wrap = tk.Frame(self.result_tab, bg=self.CARD_BG)
+        result_wrap = ttk.Frame(self.result_tab)
         result_wrap.grid(row=0, column=0, sticky="nsew")
         result_wrap.rowconfigure(0, weight=1)
         result_wrap.columnconfigure(0, weight=1)
 
-        self.result_text = tk.Text(
+        self.result_text = self._create_legacy_text(
             result_wrap,
             wrap=tk.NONE,
-            state=tk.DISABLED,
-            font=("Consolas", 10),
-            bg=self.INPUT_BG,
-            fg=self.TEXT,
-            relief="flat",
-            bd=0,
-            highlightthickness=0,
-            padx=8,
-            pady=8
+            state=tk.DISABLED
         )
         self.result_text.grid(row=0, column=0, sticky="nsew")
 
@@ -665,28 +585,27 @@ class MainWindow:
         self.result_text.config(yscrollcommand=yscroll.set)
 
     def _build_statusbar(self):
-        wrapper = tk.Frame(self.root, bg=self.BG)
-        wrapper.pack(fill=tk.X, padx=10, pady=(0, 10))
+        wrapper = ttk.Frame(self.root, padding=(10, 0, 10, 10))
+        wrapper.pack(fill=X)
 
-        bar = self._create_card(wrapper)
-        bar.pack(fill=tk.X)
+        bar = ttk.Frame(wrapper, bootstyle="light", padding=12)
+        bar.pack(fill=X)
 
-        left = tk.Frame(bar, bg=self.CARD_BG)
-        left.pack(side=tk.LEFT, fill=tk.X, expand=True, padx=12, pady=8)
+        left = ttk.Frame(bar)
+        left.pack(side=LEFT, fill=X, expand=True)
 
-        tk.Label(
-            left,
-            textvariable=self.status_var,
-            bg=self.CARD_BG,
-            fg=self.SUBTEXT,
-            font=("Microsoft YaHei", 9)
-        ).pack(side=tk.LEFT)
+        ttk.Label(left, textvariable=self.status_var, style="Status.TLabel").pack(side=LEFT)
 
-        right = tk.Frame(bar, bg=self.CARD_BG)
-        right.pack(side=tk.RIGHT, padx=12, pady=8)
+        right = ttk.Frame(bar)
+        right.pack(side=RIGHT)
 
-        self.progress = ttk.Progressbar(right, mode="indeterminate", length=160)
-        self.progress.pack(side=tk.RIGHT)
+        self.progress = ttk.Progressbar(
+            right,
+            mode="indeterminate",
+            length=160,
+            bootstyle="primary-striped"
+        )
+        self.progress.pack(side=RIGHT)
 
     # =========================
     # 事件绑定
@@ -724,11 +643,33 @@ class MainWindow:
         self.summary_var.set(text)
 
     def _clear_compare_plot(self):
-        self.compare_ax.clear()
-        self.compare_ax.set_title("算法对比图")
-        self.compare_ax.set_xlabel("Algorithm")
-        self.compare_ax.set_ylabel("Value")
-        self.compare_ax.grid(True, linestyle="--", alpha=0.4)
+        self.compare_figure.clear()
+        self.compare_figure.patch.set_facecolor(self.CHART["figure_bg"])
+
+        self.compare_ax = self.compare_figure.add_subplot(111)
+        self._style_axes(self.compare_ax)
+
+        self.compare_ax.set_title(
+            "算法对比图",
+            fontsize=13,
+            fontweight="bold",
+            color=self.CHART["text"],
+            pad=14
+        )
+        self.compare_ax.set_xlabel("Algorithm", fontsize=10, color=self.CHART["text"])
+        self.compare_ax.set_ylabel("Value", fontsize=10, color=self.CHART["text"])
+
+        self.compare_ax.text(
+            0.5,
+            0.5,
+            "请先运行当前实例实验或批量实验",
+            ha="center",
+            va="center",
+            transform=self.compare_ax.transAxes,
+            fontsize=11,
+            color=self.CHART["subtext"]
+        )
+
         self.compare_canvas.draw()
 
     def _filter_instance_list(self):
@@ -814,12 +755,10 @@ class MainWindow:
             self.current_name_var.set("未选择实例")
             self._update_summary("文件已加载，尚未运行实验")
 
-            for item in self.sort_tree.get_children():
-                self.sort_tree.delete(item)
-            for item in self.result_tree.get_children():
-                self.result_tree.delete(item)
-
+            self._clear_tree(self.sort_tree)
+            self._clear_tree(self.result_tree)
             self._clear_compare_plot()
+            self.plot_panel.clear()
 
             self.status_var.set(f"加载成功：{len(self.instances)} 个实例")
 
@@ -855,10 +794,8 @@ class MainWindow:
         )
         self._set_text(self.info_text, info)
 
-        for item in self.sort_tree.get_children():
-            self.sort_tree.delete(item)
-        for item in self.result_tree.get_children():
-            self.result_tree.delete(item)
+        self._clear_tree(self.sort_tree)
+        self._clear_tree(self.result_tree)
         self._set_text(self.result_text, "")
         self._clear_compare_plot()
 
@@ -868,6 +805,8 @@ class MainWindow:
 
         if self.auto_plot_var.get():
             self.plot_current_instance()
+        else:
+            self.plot_panel.clear()
 
     def plot_current_instance(self):
         if not self.current_instance:
@@ -890,8 +829,7 @@ class MainWindow:
             messagebox.showwarning("提示", "请先选择实例")
             return
 
-        for item in self.sort_tree.get_children():
-            self.sort_tree.delete(item)
+        self._clear_tree(self.sort_tree)
 
         groups = sort_groups_by_third_ratio(self.current_instance.groups)
         inserted = 0
@@ -1019,7 +957,6 @@ class MainWindow:
 
         self.last_experiment_results = all_results
 
-        # 如果当前实例存在，尝试定位其单实例结果
         current_name = self.current_instance.name if self.current_instance else None
         self.current_instance_experiment = None
         if current_name is not None:
@@ -1045,8 +982,7 @@ class MainWindow:
     # 结果刷新
     # =========================
     def _refresh_result_tree(self, experiment_results: List[InstanceExperimentResult]):
-        for item in self.result_tree.get_children():
-            self.result_tree.delete(item)
+        self._clear_tree(self.result_tree)
 
         for exp in experiment_results:
             for r in exp.results:
@@ -1073,7 +1009,11 @@ class MainWindow:
         self._set_text(self.result_text, text)
 
     def _refresh_compare_plot_for_instance(self, exp_result: InstanceExperimentResult):
-        self.compare_ax.clear()
+        self.compare_figure.clear()
+        self.compare_figure.patch.set_facecolor(self.CHART["figure_bg"])
+
+        self.compare_ax = self.compare_figure.add_subplot(111)
+        self._style_axes(self.compare_ax)
 
         valid = [r for r in exp_result.results if r.success]
         if not valid:
@@ -1083,29 +1023,94 @@ class MainWindow:
         names = [r.algorithm_name for r in valid]
         values = [r.value for r in valid]
         times = [r.time_seconds for r in valid]
+        colors = [self._get_algo_color(name) for name in names]
 
         x = list(range(len(names)))
 
-        self.compare_ax.bar(x, values)
+        bars = self.compare_ax.bar(
+            x,
+            values,
+            color=colors,
+            edgecolor="white",
+            linewidth=0.8,
+            alpha=0.95,
+            zorder=3
+        )
+
         self.compare_ax.set_xticks(x)
-        self.compare_ax.set_xticklabels(names, rotation=20)
-        self.compare_ax.set_title(f"{exp_result.instance_name} - 算法 value 对比")
-        self.compare_ax.set_xlabel("Algorithm")
-        self.compare_ax.set_ylabel("Value")
-        self.compare_ax.grid(True, linestyle="--", alpha=0.35)
+        self.compare_ax.set_xticklabels(names, rotation=18, ha="right", color="#374151")
+        self.compare_ax.set_title(
+            f"{exp_result.instance_name}：算法结果对比",
+            fontsize=13,
+            fontweight="bold",
+            color=self.CHART["text"],
+            pad=14
+        )
+        self.compare_ax.set_xlabel("Algorithm", fontsize=10, color=self.CHART["text"])
+        self.compare_ax.set_ylabel("Value", fontsize=10, color=self.CHART["text"])
 
         ax2 = self.compare_ax.twinx()
-        ax2.plot(x, times, marker="o")
-        ax2.set_ylabel("Time(s)")
+        self._style_axes(ax2)
+        ax2.grid(False)
 
-        for i, (v, t) in enumerate(zip(values, times)):
-            self.compare_ax.text(i, v, str(v), ha="center", va="bottom", fontsize=9)
-            ax2.text(i, t, f"{t:.4f}", ha="center", va="bottom", fontsize=8)
+        ax2.plot(
+            x,
+            times,
+            marker="o",
+            linewidth=2.0,
+            markersize=5.5,
+            color=self.CHART["line"],
+            label="Time(s)",
+            zorder=4
+        )
+        ax2.set_ylabel("Time(s)", fontsize=10, color=self.CHART["text"])
+        ax2.tick_params(axis="y", colors="#374151", labelsize=9)
+
+        for rect, val in zip(bars, values):
+            self.compare_ax.text(
+                rect.get_x() + rect.get_width() / 2,
+                rect.get_height(),
+                f"{val}",
+                ha="center",
+                va="bottom",
+                fontsize=8.5,
+                color=self.CHART["text"]
+            )
+
+        for i, t in enumerate(times):
+            ax2.text(
+                x[i],
+                t,
+                f"{t:.4f}",
+                ha="center",
+                va="bottom",
+                fontsize=8,
+                color=self.CHART["subtext"]
+            )
+
+        legend = ax2.legend(loc="upper right", frameon=True, fontsize=9)
+        self._style_legend(legend)
+
+        note = f"algorithms={len(valid)}"
+        self.compare_ax.text(
+            0.99,
+            0.01,
+            note,
+            transform=self.compare_ax.transAxes,
+            ha="right",
+            va="bottom",
+            fontsize=8,
+            color=self.CHART["subtext"]
+        )
 
         self.compare_canvas.draw()
 
     def _refresh_compare_plot_for_batch(self, experiment_results: List[InstanceExperimentResult]):
-        self.compare_ax.clear()
+        self.compare_figure.clear()
+        self.compare_figure.patch.set_facecolor(self.CHART["figure_bg"])
+
+        self.compare_ax = self.compare_figure.add_subplot(111)
+        self._style_axes(self.compare_ax)
 
         agg = {}
         for exp in experiment_results:
@@ -1132,24 +1137,86 @@ class MainWindow:
             sum(agg[name]["times"]) / len(agg[name]["times"]) if agg[name]["times"] else 0.0
             for name in names
         ]
+        colors = [self._get_algo_color(name) for name in names]
 
         x = list(range(len(names)))
 
-        self.compare_ax.bar(x, avg_values)
+        bars = self.compare_ax.bar(
+            x,
+            avg_values,
+            color=colors,
+            edgecolor="white",
+            linewidth=0.8,
+            alpha=0.95,
+            zorder=3
+        )
+
         self.compare_ax.set_xticks(x)
-        self.compare_ax.set_xticklabels(names, rotation=20)
-        self.compare_ax.set_title("批量实验 - 平均 value / 平均 time 对比")
-        self.compare_ax.set_xlabel("Algorithm")
-        self.compare_ax.set_ylabel("Average Value")
-        self.compare_ax.grid(True, linestyle="--", alpha=0.35)
+        self.compare_ax.set_xticklabels(names, rotation=18, ha="right", color="#374151")
+        self.compare_ax.set_title(
+            "批量实验：平均结果对比",
+            fontsize=13,
+            fontweight="bold",
+            color=self.CHART["text"],
+            pad=14
+        )
+        self.compare_ax.set_xlabel("Algorithm", fontsize=10, color=self.CHART["text"])
+        self.compare_ax.set_ylabel("Average Value", fontsize=10, color=self.CHART["text"])
 
         ax2 = self.compare_ax.twinx()
-        ax2.plot(x, avg_times, marker="o")
-        ax2.set_ylabel("Average Time(s)")
+        self._style_axes(ax2)
+        ax2.grid(False)
 
-        for i, (v, t) in enumerate(zip(avg_values, avg_times)):
-            self.compare_ax.text(i, v, f"{v:.2f}", ha="center", va="bottom", fontsize=9)
-            ax2.text(i, t, f"{t:.4f}", ha="center", va="bottom", fontsize=8)
+        ax2.plot(
+            x,
+            avg_times,
+            marker="o",
+            linewidth=2.0,
+            markersize=5.5,
+            color=self.CHART["line"],
+            label="Average Time(s)",
+            zorder=4
+        )
+        ax2.set_ylabel("Average Time(s)", fontsize=10, color=self.CHART["text"])
+        ax2.tick_params(axis="y", colors="#374151", labelsize=9)
+
+        for rect, val in zip(bars, avg_values):
+            self.compare_ax.text(
+                rect.get_x() + rect.get_width() / 2,
+                rect.get_height(),
+                f"{val:.2f}",
+                ha="center",
+                va="bottom",
+                fontsize=8.5,
+                color=self.CHART["text"]
+            )
+
+        for i, t in enumerate(avg_times):
+            ax2.text(
+                x[i],
+                t,
+                f"{t:.4f}",
+                ha="center",
+                va="bottom",
+                fontsize=8,
+                color=self.CHART["subtext"]
+            )
+
+        legend = ax2.legend(loc="upper right", frameon=True, fontsize=9)
+        self._style_legend(legend)
+
+        total_instances = len(experiment_results)
+        note = f"instances={total_instances}, algorithms={len(names)}"
+        self.compare_ax.text(
+            0.99,
+            0.01,
+            note,
+            transform=self.compare_ax.transAxes,
+            ha="right",
+            va="bottom",
+            fontsize=8,
+            color=self.CHART["subtext"]
+        )
 
         self.compare_canvas.draw()
 
@@ -1195,19 +1262,3 @@ class MainWindow:
         except Exception as e:
             messagebox.showerror("导出失败", str(e))
             self.status_var.set("TXT 导出失败")
-
-
-def main():
-    root = tk.Tk()
-    try:
-        from ctypes import windll
-        windll.shcore.SetProcessDpiAwareness(1)
-    except Exception:
-        pass
-
-    MainWindow(root)
-    root.mainloop()
-
-
-if __name__ == "__main__":
-    main()

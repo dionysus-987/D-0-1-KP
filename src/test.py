@@ -1,10 +1,10 @@
 # -*- coding: utf-8 -*-
-from parser_utils import parse_dkp_instances
 from algorithms.dp_solver import DPSolver
 from algorithms.greedy_ratio import GreedyRatioSolver
 from algorithms.greedy_third_ratio import GreedyThirdRatioSolver
-from experiment.runner import ExperimentRunner
 from experiment.exporter import export_results_to_csv, export_results_to_txt
+from experiment.runner import ExperimentRunner
+from parser_utils import parse_dkp_instances
 
 
 def main():
