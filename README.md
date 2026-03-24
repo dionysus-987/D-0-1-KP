@@ -30,6 +30,7 @@ Four kinds of D{0-1}KP instances/
 ### 方式 1：直接运行源码
 1. 安装依赖：`pip install -r requirements.txt`
 2. 执行命令：`python main.py`
+3. 打包后的exe文件：
 
 ### 方式 2：运行打包好的 exe 文件
 1. 进入 `dist` 文件夹
@@ -51,3 +52,5 @@ pyinstaller -F -w --hidden-import=ttkbootstrap --hidden-import=matplotlib --add-
 2. 首次运行可能需要短暂加载时间
 3. 若运行异常，可检查数据文件是否完整
 4. 打包环境：Windows 10/11，Python 3.11，Conda 虚拟环境
+5. 通过网盘分享的文件：Four kinds of D{0-1}KP instances
+链接: https://pan.baidu.com/s/1-igPA-M-FifMnULjR9FVyw?pwd=3p4u 提取码: 3p4u 
