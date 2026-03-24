@@ -51,7 +51,3 @@ pyinstaller -F -w --hidden-import=ttkbootstrap --hidden-import=matplotlib --add-
 2. 首次运行可能需要短暂加载时间
 3. 若运行异常，可检查数据文件是否完整
 4. 打包环境：Windows 10/11，Python 3.11，Conda 虚拟环境
-
----
-
-我可以**直接帮你生成一个可下载的 README.txt 文件**，你复制到项目里就能用，需要吗？
